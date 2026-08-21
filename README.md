@@ -20,7 +20,7 @@ The Python server is an optional cache/proxy. GitHub Pages uses the public APIs 
 
 Positions are computed **every second in the browser** from NORAD TLEs (Celestrak).
 
-The **repo catalog** (`data/satellites.json`) refreshes automatically every 30 minutes via GitHub Actions — stations (ISS, Tiangong, …) plus objects launched in the last 30 days. Committing TLE every second would burn GitHub; orbital elements only change a few times a day. The globe still moves in real time.
+The **repo catalog** (`data/satellites.json`) refreshes automatically every 30 minutes via GitHub Actions — space stations (ISS, Tiangong, …) plus Celestrak `tle-new` (recently launched objects). Committing every second would burn GitHub; NORAD elements only change a few times a day. The globe still moves in real time.
 
 ## Data
 
