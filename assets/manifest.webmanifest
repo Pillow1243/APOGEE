@@ -1,0 +1,21 @@
+{
+  "name": "APOGEE — Mobin.A",
+  "short_name": "APOGEE",
+  "description": "Live space range control. Made by Mobin.A",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07080b",
+  "theme_color": "#07080b",
+  "lang": "fa",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "./icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>اوج — مرکز کنترل زنده · ساخته شده توسط مبین.آ</title>
+    <meta name="author" content="Mobin.A / مبین.آ" />
+    <meta name="theme-color" content="#07080b" />
+    <meta
+      name="description"
+      content="Live space range control. Made by Mobin.A — مرکز کنترل زنده پرتاب‌های فضایی. ساخته شده توسط مبین.آ"
+    />
+    <meta property="og:title" content="APOGEE · Mobin.A" />
+    <meta property="og:image" content="./assets/icon.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon.png" />
+    <link rel="apple-touch-icon" href="./assets/icon.png" />
+    <link rel="manifest" href="./assets/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@700;800&family=Vazirmatn:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="globe" aria-hidden="true"></div>
+      <div id="flat-map" hidden></div>
+      <div class="vignette"></div>
+      <div class="grain"></div>
+      <div class="scan" aria-hidden="true"></div>
+
+      <header class="hud-top">
+        <button class="brand" id="about-btn" type="button">
+          <img class="mark-img" src="./assets/icon.png" width="36" height="36" alt="APOGEE" />
+          <div>
+            <div class="word" dir="ltr">APOGEE</div>
+            <div class="tag" data-i18n="brandTag">اوج · مرکز کنترل زنده</div>
+          </div>
+        </button>
+
+        <div class="stats-strip" id="stats-strip">
+          <div class="stat"><span class="k" data-i18n="stat24">۲۴ ساعت</span><span id="stat-24h" class="v">—</span></div>
+          <div class="stat"><span class="k" data-i18n="statCrew">در مدار</span><span id="stat-crew" class="v">—</span></div>
+          <div class="stat"><span class="k" data-i18n="statVis">دید ایستگاه</span><span id="stat-vis" class="v">—</span></div>
+        </div>
+
+        <div class="top-meta">
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-lang="fa" class="on">فا</button>
+            <button type="button" data-lang="en">EN</button>
+          </div>
+          <div class="meta-block">
+            <span class="k">UTC</span>
+            <span id="utc-clock" class="v mono" dir="ltr">--:--:--</span>
+          </div>
+          <div class="meta-block">
+            <span class="k" data-i18n="tehran">تهران</span>
+            <span id="tehran-clock" class="v mono" dir="ltr">--:--:--</span>
+          </div>
+          <button class="iss-chip" id="iss-chip" type="button" data-i18n-title="issTitle" title="تعقیب ایستگاه فضایی">
+            <span class="pulse"></span>
+            <span class="k">ISS</span>
+            <span id="iss-coords" class="v mono" dir="ltr">در حال قفل…</span>
+          </button>
+        </div>
+      </header>
+
+      <aside class="rail start">
+        <div class="rail-head">
+          <div class="tabs" role="tablist">
+            <button class="tab on" data-tab="upcoming" type="button" data-i18n="tabUpcoming">پیش‌رو</button>
+            <button class="tab" data-tab="previous" type="button" data-i18n="tabPrevious">اخیر</button>
+          </div>
+          <div id="list-count" class="count">۰</div>
+        </div>
+        <div class="search-wrap">
+          <input id="search" type="search" data-i18n-placeholder="search" placeholder="جستجوی پرتاب، راکت، آژانس…" autocomplete="off" />
+        </div>
+        <div class="filters" id="filters">
+          <button class="chip-btn on" data-filter="all" type="button" data-i18n="filterAll">همه</button>
+          <button class="chip-btn" data-filter="go" type="button" data-i18n="filterGo">آماده</button>
+          <button class="chip-btn" data-filter="day" type="button" data-i18n="filterDay">۲۴ ساعت</button>
+        </div>
+        <div id="launch-list" class="launch-list"></div>
+      </aside>
+
+      <aside class="rail end">
+        <section class="card hero-card" id="hero-card">
+          <div class="hero-photo" id="hero-photo"></div>
+          <div class="hero-fade">
+            <div class="card-k" data-i18n="mission">ماموریت</div>
+            <h2 id="mission-name" dir="ltr">—</h2>
+          </div>
+        </section>
+
+        <section class="card">
+          <p id="mission-desc" class="desc" dir="ltr">یک پرتاب را از فهرست انتخاب کنید.</p>
+          <div class="chips" id="mission-chips"></div>
+          <div id="prob-wrap" class="prob" hidden>
+            <div class="prob-top">
+              <span data-i18n="probability">احتمال پرتاب</span>
+              <b id="prob-val">—</b>
+            </div>
+            <div class="meter"><span id="prob-bar"></span></div>
+          </div>
+          <div id="when-line" class="when-line"></div>
+        </section>
+
+        <section class="card split">
+          <div>
+            <div class="card-k" data-i18n="vehicle">خودرو پرتاب</div>
+            <div id="vehicle-name" class="strong" dir="ltr">—</div>
+            <div id="agency-name" class="muted" dir="ltr"></div>
+            <div id="agency-stats" class="mini"></div>
+          </div>
+          <img id="agency-logo" alt="" hidden />
+        </section>
+
+        <section class="card" id="weather-card">
+          <div class="card-k-row">
+            <div class="card-k" data-i18n="padWeather">هوای پد</div>
+            <div id="wx-call" class="wx-call">—</div>
+          </div>
+          <div id="weather-body" class="weather">
+            <div class="muted" data-i18n="sensors">حسگرها در حال قفل…</div>
+          </div>
+          <svg id="wind-spark" class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+        </section>
+
+        <section class="card" id="pad-card" hidden>
+          <div class="card-k" data-i18n="padPhoto">تصویر پد</div>
+          <img id="pad-map" class="pad-map" alt="نقشه پد پرتاب" data-i18n-alt="padMapAlt" />
+        </section>
+
+        <section class="card" id="crew-card">
+          <div class="card-k" data-i18n="crewLive">انسان در فضا · زنده</div>
+          <div id="crew-body" class="crew"></div>
+        </section>
+      </aside>
+
+      <footer class="hud-bottom">
+        <div class="status-col">
+          <div id="status-pill" class="pill">در انتظار</div>
+          <div id="pad-line" class="pad-line muted">—</div>
+        </div>
+        <div class="count-wrap">
+          <div id="t-prefix" class="t-prefix">T −</div>
+          <div id="countdown" class="countdown mono" dir="ltr">
+            <div class="unit"><span class="num">--</span><span class="lbl" data-i18n="day">روز</span></div>
+            <div class="colon">:</div>
+            <div class="unit"><span class="num">--</span><span class="lbl" data-i18n="hour">ساعت</span></div>
+            <div class="colon">:</div>
+            <div class="unit"><span class="num">--</span><span class="lbl" data-i18n="min">دقیقه</span></div>
+            <div class="colon">:</div>
+            <div class="unit"><span class="num">--</span><span class="lbl" data-i18n="sec">ثانیه</span></div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="fly-btn" class="btn ghost" type="button" data-i18n="flyPad">پرواز به پد</button>
+          <button id="spin-btn" class="btn ghost" type="button" data-i18n="spin">چرخش کره</button>
+          <a id="webcast-btn" class="btn flame" hidden target="_blank" rel="noopener" data-i18n="webcast">پخش زنده</a>
+        </div>
+      </footer>
+
+      <div class="credit">
+        <span class="live-dot"></span>
+        <span data-i18n="credit">ساخته شده توسط</span> <b>مبین.آ</b>
+        <span class="sep">·</span>
+        <span id="freshness">در حال همگام‌سازی…</span>
+      </div>
+    </div>
+
+    <div id="about" class="about" hidden>
+      <div class="about-card">
+        <img src="./assets/icon.png" width="88" height="88" alt="APOGEE" />
+        <div class="word" dir="ltr">APOGEE</div>
+        <h3 data-i18n="aboutTitle">درباره سازنده</h3>
+        <p class="about-body" data-i18n="aboutBody">
+          مبین.آ برنامه‌نویس است. این داشبورد را از صفر نوشته — مرکز کنترل زندهٔ پرتاب‌ها، مدار ایستگاه و هوای پد — و بقیهٔ برنامه‌هایش را هم در کانال تلگرام منتشر می‌کند.
+        </p>
+        <p class="about-maker" data-i18n="aboutMaker">ساخته شده توسط مبین.آ</p>
+        <a class="tg" href="https://t.me/MobinA_programs" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M9.04 15.49 8.9 19.3c.5 0 .72-.22.98-.47l2.35-2.23 4.88 3.54c.9.5 1.54.24 1.78-.82l3.23-15.06h.01c.29-1.33-.48-1.85-1.35-1.53L1.9 9.67c-1.3.5-1.28 1.22-.22 1.55l4.9 1.53 11.38-7.16c.54-.33 1.03-.15.63.2z"/></svg>
+          <span data-i18n="channel">کانال برنامه‌های من</span>
+          <span dir="ltr">t.me/MobinA_programs</span>
+        </a>
+        <button id="about-close" class="btn ghost" type="button" data-i18n="aboutClose">بستن</button>
+      </div>
+    </div>
+
+    <div id="loader">
+      <img class="load-icon" src="./assets/icon.png" width="92" height="92" alt="" />
+      <div class="load-word" dir="ltr">APOGEE</div>
+      <div class="load-fa" data-i18n="loadFa">اوج</div>
+      <div class="load-sub" id="load-sub" data-i18n="loadSub">در حال قفل‌کردن برد…</div>
+      <div class="load-credit" data-i18n="loadCredit">ساخته شده توسط مبین.آ</div>
+    </div>
+
+    <script src="https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js"></script>
+    <script src="./i18n.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
