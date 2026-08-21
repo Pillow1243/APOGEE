@@ -12,9 +12,14 @@
     />
     <meta property="og:title" content="APOGEE · Mobin.A" />
     <meta property="og:image" content="./assets/icon.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon.png" />
-    <link rel="apple-touch-icon" href="./assets/icon.png" />
-    <link rel="manifest" href="./assets/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="512x512" href="./assets/icon-512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/icon-180.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="APOGEE" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -208,5 +213,10 @@
     <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
     <script src="./i18n.js"></script>
     <script src="./app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js").catch(function () {});
+      }
+    </script>
   </body>
 </html>

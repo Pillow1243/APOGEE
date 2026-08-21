@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="fa">
+  <head>
+    <meta charset="UTF-8" />
+    <title>APOGEE</title>
+    <meta name="theme-color" content="#07080b" />
+    <style>
+      html, body { background: #07080b; color: #efe9dc; font-family: sans-serif; }
+    </style>
+    <script>
+      (function () {
+        var dest = "./index.html";
+        try {
+          if (location.pathname.indexOf("/APOGEE") === 0) dest = "/APOGEE/";
+        } catch (e) {}
+        location.replace(dest);
+      })();
+    </script>
+    <meta http-equiv="refresh" content="0; url=./index.html" />
+  </head>
+  <body>APOGEE…</body>
+</html>
