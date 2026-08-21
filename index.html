@@ -61,7 +61,7 @@
           </div>
           <button class="iss-chip" id="iss-chip" type="button" data-i18n-title="issTitle" title="تعقیب ایستگاه فضایی">
             <span class="pulse"></span>
-            <span class="k">ISS</span>
+            <span class="k" id="track-name">ISS</span>
             <span id="iss-coords" class="v mono" dir="ltr">در حال قفل…</span>
           </button>
         </div>
@@ -72,6 +72,7 @@
           <div class="tabs" role="tablist">
             <button class="tab on" data-tab="upcoming" type="button" data-i18n="tabUpcoming">پیش‌رو</button>
             <button class="tab" data-tab="previous" type="button" data-i18n="tabPrevious">اخیر</button>
+            <button class="tab" data-tab="orbit" type="button" data-i18n="tabOrbit">مدار</button>
           </div>
           <div id="list-count" class="count">۰</div>
         </div>
@@ -82,6 +83,11 @@
           <button class="chip-btn on" data-filter="all" type="button" data-i18n="filterAll">همه</button>
           <button class="chip-btn" data-filter="go" type="button" data-i18n="filterGo">آماده</button>
           <button class="chip-btn" data-filter="day" type="button" data-i18n="filterDay">۲۴ ساعت</button>
+        </div>
+        <div class="filters" id="sat-filters" hidden>
+          <button class="chip-btn on" data-sat-filter="all" type="button" data-i18n="satAll">همه</button>
+          <button class="chip-btn" data-sat-filter="stations" type="button" data-i18n="satStations">ایستگاه</button>
+          <button class="chip-btn" data-sat-filter="new" type="button" data-i18n="satNew">جدید</button>
         </div>
         <div id="launch-list" class="launch-list"></div>
       </aside>
@@ -199,6 +205,7 @@
     </div>
 
     <script src="https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js"></script>
+    <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
     <script src="./i18n.js"></script>
     <script src="./app.js"></script>
   </body>

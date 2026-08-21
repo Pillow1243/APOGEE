@@ -150,6 +150,7 @@
     document.querySelectorAll("[data-lang]").forEach((b) => {
       b.classList.toggle("on", b.dataset.lang === state.lang);
     });
+    if (typeof syncTabChrome === "function") syncTabChrome();
   }
   function setLang(lang) {
     state.lang = lang === "en" ? "en" : "fa";
@@ -397,6 +398,122 @@
     state.crew = crew;
   }
 
+  function hasSatLib() {
+    return typeof satellite === "object" && typeof satellite.json2satrec === "function";
+  }
+
+  async function loadCatalog() {
+    const data = await getJSON("./data/satellites.json");
+    if (!hasSatLib()) throw new Error("satellite.js missing");
+    const list = [];
+    for (const row of data.sats || []) {
+      try {
+        const rec = satellite.twoline2satrec(row.l1, row.l2);
+        if (!rec) continue;
+        list.push({
+          id: row.id,
+          name: row.name || String(row.id),
+          group: row.group || "new",
+          epoch: null,
+          satrec: rec,
+          lat: null,
+          lng: null,
+          alt: null,
+          vel: null,
+        });
+      } catch (_) { /* skip bad element */ }
+    }
+    state.sats = list;
+    state.catalogUpdated = data.updated || null;
+    if (state.trackedId == null) {
+      const iss = list.find((s) => /ISS/i.test(s.name) && /ZARYA/i.test(s.name)) || list[0];
+      if (iss) state.trackedId = iss.id;
+    }
+  }
+
+  function visibleSats() {
+    let list = state.sats;
+    if (state.satFilter === "stations" || state.satFilter === "new") {
+      list = list.filter((s) => s.group === state.satFilter);
+    }
+    const q = state.q.trim().toLowerCase();
+    if (q) list = list.filter((s) => `${s.name} ${s.id}`.toLowerCase().includes(q));
+    return list;
+  }
+
+  function trackedSat() {
+    return state.sats.find((s) => s.id === state.trackedId) || null;
+  }
+
+  function tickSats() {
+    if (!hasSatLib() || !state.sats.length) return;
+    const now = new Date();
+    const gmst = satellite.gstime(now);
+    for (const s of state.sats) {
+      try {
+        const pv = satellite.propagate(s.satrec, now);
+        if (!pv || !pv.position) continue;
+        const geo = satellite.eciToGeodetic(pv.position, gmst);
+        s.lat = satellite.radiansToDegrees(geo.latitude);
+        s.lng = satellite.radiansToDegrees(geo.longitude);
+        s.alt = geo.height;
+        if (pv.velocity) {
+          const v = pv.velocity;
+          s.vel = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) * 3600;
+        }
+      } catch (_) { /* skip */ }
+    }
+    const tr = trackedSat();
+    if (tr && tr.lat != null) {
+      $("track-name").textContent = tr.name.replace(/\s*\(.*\)\s*$/, "") || tr.name;
+      $("iss-coords").textContent =
+        `${tr.lat.toFixed(2)}°  ${tr.lng.toFixed(2)}°  ·  ${Math.round(tr.alt)} km` +
+        (tr.vel ? `  ·  ${Math.round(tr.vel)} km/h` : "");
+    }
+    if ($("stat-vis")) $("stat-vis").textContent = fa(state.sats.length);
+    applyGlobeData();
+    renderFlat();
+    if (state.tab === "orbit") renderSatList();
+  }
+
+  function renderSatList() {
+    const list = visibleSats();
+    $("list-count").textContent = fa(list.length);
+    if (!list.length) {
+      $("launch-list").innerHTML = `<div class="card muted" style="padding:14px">${t("empty")}</div>`;
+      return;
+    }
+    $("launch-list").innerHTML = list
+      .map((s) => {
+        const on = s.id === state.trackedId ? "on" : "";
+        const alt = s.alt != null ? `${Math.round(s.alt)} km` : "—";
+        return `<button class="sat-item ${on}" data-sat-id="${s.id}" type="button">
+          <span class="sat-dot ${s.group}"></span>
+          <div class="title" dir="ltr">${escapeAttr(s.name)}</div>
+          <div class="sat-meta" dir="ltr">${alt}</div>
+        </button>`;
+      })
+      .join("");
+  }
+
+  function syncTabChrome() {
+    const orbit = state.tab === "orbit";
+    const lf = $("filters");
+    const sf = $("sat-filters");
+    if (lf) lf.hidden = orbit;
+    if (sf) sf.hidden = !orbit;
+    const search = $("search");
+    if (search) search.placeholder = t(orbit ? "satSearch" : "search");
+  }
+
+  function flySat(sat) {
+    if (!sat || sat.lat == null || !state.globe) return;
+    state.globe.controls().autoRotate = false;
+    state.spinning = false;
+    $("spin-btn").classList.remove("on");
+    state.globe.pointOfView({ lat: sat.lat, lng: sat.lng, altitude: 1.35 }, 900);
+  }
+
   function stampFresh() {
     const t = new Date().toLocaleTimeString(state.lang === "fa" ? "fa-IR" : "en-GB", {
       timeZone: "Asia/Tehran",
@@ -436,9 +553,14 @@
     }).length;
     $("stat-24h").textContent = t("stat24v", fa(n24));
     $("stat-crew").textContent = t("statCrewV", fa(state.crew.length));
+    if ($("stat-vis")) $("stat-vis").textContent = fa(state.sats.length || "—");
   }
 
   function renderList() {
+    if (state.tab === "orbit") {
+      renderSatList();
+      return;
+    }
     const list = visibleList();
     $("list-count").textContent = fa(list.length);
     if (!list.length) {
@@ -681,15 +803,19 @@
         id: l.id,
       });
     }
-    if (state.iss) {
+    for (const s of state.sats) {
+      if (s.lat == null || s.lng == null) continue;
+      const tracked = s.id === state.trackedId;
+      const station = s.group === "stations";
       pts.push({
-        lat: state.iss.latitude,
-        lng: state.iss.longitude,
-        color: "#8ad7ff",
-        radius: 0.42,
-        alt: 0.04,
-        label: "ISS",
-        id: "iss",
+        lat: s.lat,
+        lng: s.lng,
+        color: tracked ? "#ffffff" : station ? "#8ad7ff" : "#ff5c33",
+        radius: tracked ? 0.5 : station ? 0.32 : 0.18,
+        alt: Math.min(0.22, Math.max(0.02, (s.alt || 400) / 6371)),
+        label: s.name,
+        id: `sat-${s.id}`,
+        satId: s.id,
       });
     }
     return pts;
@@ -765,9 +891,11 @@
       const [x, y] = project(pad.latitude, pad.longitude, w, h);
       bits.push(`<div class="dot" style="left:${x}px;top:${y}px" title="${escapeAttr(pad.name)}"></div>`);
     }
-    if (state.iss) {
-      const [x, y] = project(state.iss.latitude, state.iss.longitude, w, h);
-      bits.push(`<div class="dot iss" style="left:${x}px;top:${y}px" title="ISS"></div>`);
+    for (const s of state.sats) {
+      if (s.lat == null) continue;
+      const [x, y] = project(s.lat, s.lng, w, h);
+      const cls = s.group === "stations" || s.id === state.trackedId ? "iss" : "";
+      bits.push(`<div class="dot ${cls}" style="left:${x}px;top:${y}px" title="${escapeAttr(s.name)}"></div>`);
     }
     box.innerHTML = bits.join("");
   }
@@ -807,8 +935,14 @@
     globe.pointOfView({ lat: 18, lng: 52, altitude: 2.35 });
 
     globe.onPointClick((p) => {
-      if (!p || p.id === "iss") {
-        flyISS();
+      if (!p) return;
+      if (p.satId != null) {
+        const sat = state.sats.find((s) => s.id === p.satId);
+        if (sat) {
+          state.trackedId = sat.id;
+          flySat(sat);
+          if (state.tab === "orbit") renderSatList();
+        }
         return;
       }
       const hit =
@@ -845,8 +979,9 @@
   }
 
   function flyISS() {
-    if (!state.iss) return;
-    if (state.globe) {
+    const tr = trackedSat();
+    if (tr) flySat(tr);
+    else if (state.iss && state.globe) {
       state.globe.controls().autoRotate = false;
       state.spinning = false;
       $("spin-btn").classList.remove("on");
@@ -918,8 +1053,9 @@
   function bindUI() {
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === tab));
+        document.querySelectorAll(".tab").forEach((tb) => tb.classList.toggle("on", tb === tab));
         state.tab = tab.dataset.tab;
+        syncTabChrome();
         renderList();
         applyGlobeData();
         renderFlat();
@@ -936,7 +1072,25 @@
       state.q = e.target.value || "";
       renderList();
     });
+    document.querySelectorAll("[data-sat-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-sat-filter]").forEach((b) => b.classList.toggle("on", b === btn));
+        state.satFilter = btn.dataset.satFilter;
+        renderSatList();
+      });
+    });
     $("launch-list").addEventListener("click", (e) => {
+      const satBtn = e.target.closest("[data-sat-id]");
+      if (satBtn) {
+        const id = Number(satBtn.getAttribute("data-sat-id"));
+        const sat = state.sats.find((s) => s.id === id);
+        if (sat) {
+          state.trackedId = sat.id;
+          renderSatList();
+          flySat(sat);
+        }
+        return;
+      }
       const btn = e.target.closest("[data-id]");
       if (!btn) return;
       const id = btn.getAttribute("data-id");
@@ -1026,7 +1180,12 @@
         loadCrew().catch(() => {
           state.crew = [];
         }),
+        loadCatalog().catch(() => {
+          state.sats = [];
+        }),
       ]);
+      tickSats();
+      syncTabChrome();
       renderCrew();
       renderStats();
       selectDefault();

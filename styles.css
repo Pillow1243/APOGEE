@@ -260,6 +260,25 @@ img { max-width: 100%; }
 }
 .sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
 
+.sat-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: start; color: inherit; font: inherit;
+  padding: 9px 12px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  backdrop-filter: blur(18px);
+}
+.sat-item.on { border-color: color-mix(in srgb, var(--ice) 55%, transparent); }
+.sat-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 10px currentColor;
+}
+.sat-dot.stations { color: var(--ice); background: var(--ice); }
+.sat-dot.new { color: var(--flame); background: var(--flame); }
+.sat-item .title { font-size: 12px; }
+.sat-meta { margin-inline-start: auto; font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+
 .card { padding: 14px 16px 16px; }
 .hero-card { padding: 0; overflow: hidden; position: relative; min-height: 128px; }
 .hero-photo {

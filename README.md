@@ -14,7 +14,13 @@ python3 server.py
 
 Then open `http://localhost:4173`.
 
-The Python server is an optional cache/proxy. Opening `index.html` via GitHub Pages uses the public APIs directly.
+The Python server is an optional cache/proxy. GitHub Pages uses the public APIs directly.
+
+## Live satellites
+
+Positions are computed **every second in the browser** from NORAD TLEs (Celestrak).
+
+The **repo catalog** (`data/satellites.json`) refreshes automatically every 30 minutes via GitHub Actions — stations (ISS, Tiangong, …) plus objects launched in the last 30 days. Committing TLE every second would burn GitHub; orbital elements only change a few times a day. The globe still moves in real time.
 
 ## Data
 
