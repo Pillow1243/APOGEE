@@ -89,8 +89,7 @@ img { max-width: 100%; }
 .brand:hover .word { color: var(--flame-2); }
 .mark, .mark-img {
   width: 36px; height: 36px; color: var(--flame);
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px var(--stroke);
+  border-radius: 999px;
 }
 .word {
   font-family: var(--display);
