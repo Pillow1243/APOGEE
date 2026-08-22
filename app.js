@@ -1106,17 +1106,62 @@
     document.querySelectorAll("[data-lang]").forEach((b) => {
       b.addEventListener("click", () => setLang(b.dataset.lang));
     });
-    $("about-btn").addEventListener("click", () => {
-      $("about").hidden = false;
+    const layers = [];
+    let ignorePop = 0;
+    function pushLayer(id) {
+      if (layers[layers.length - 1] === id) return;
+      layers.push(id);
+      try { history.pushState({ layer: id }, ""); } catch (_) {}
+    }
+    function dropLayer(id, fromPop) {
+      const i = layers.lastIndexOf(id);
+      if (i >= 0) layers.splice(i, 1);
+      if (!fromPop) {
+        try {
+          if (history.state && history.state.layer === id) {
+            ignorePop += 1;
+            history.back();
+          }
+        } catch (_) {}
+      }
+    }
+    function openAbout() {
+      const el = $("about");
+      if (el && el.hidden) pushLayer("about");
+      if (el) el.hidden = false;
+    }
+    function closeAbout(fromPop) {
+      const el = $("about");
+      const was = el && !el.hidden;
+      if (el) el.hidden = true;
+      if (was) dropLayer("about", fromPop);
+    }
+    function consumeBack() {
+      if (!layers.length) return false;
+      closeAbout(true);
+      return true;
+    }
+    try { history.scrollRestoration = "manual"; } catch (_) {}
+    addEventListener("popstate", () => {
+      if (ignorePop) { ignorePop -= 1; return; }
+      consumeBack();
     });
-    $("about-close").addEventListener("click", () => {
-      $("about").hidden = true;
-    });
+    document.addEventListener("backbutton", (e) => {
+      if (consumeBack()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+    window.AndroidBack = consumeBack;
+    window.onBackPressed = consumeBack;
+    $("about-btn").addEventListener("click", openAbout);
+    $("about-close").addEventListener("click", () => closeAbout());
     $("about").addEventListener("click", (e) => {
-      if (e.target.id === "about") $("about").hidden = true;
+      if (e.target.id === "about") closeAbout();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") $("about").hidden = true;
+      if (e.key === "Escape") closeAbout();
+      if (e.keyCode === 4 && consumeBack()) e.preventDefault();
     });
 
     window.addEventListener("keydown", (e) => {
