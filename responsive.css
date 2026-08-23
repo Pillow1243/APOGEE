@@ -1,0 +1,13 @@
+/* Tablet / desktop polish */
+@media (min-width: 981px) and (max-width: 1280px) {
+  .rail { width: min(340px, 34vw); }
+  .hud-top { padding-inline: 18px; }
+}
+@media (min-width: 1280px) {
+  .hud-top { padding-inline: 28px; }
+  .hud-bottom { padding-inline: 28px; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .stats-strip { display: none; }
+  #globe, #flat-map { height: 56vh; }
+}
