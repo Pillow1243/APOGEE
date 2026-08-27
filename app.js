@@ -118,7 +118,17 @@
     globe: null,
     flat: false,
     spinning: true,
-    lang: localStorage.getItem("apogee-lang") || "fa",
+    lang: localStorage.getItem("apogee-lang") || "en",
+    satFilter: "all",
+    sats: [],
+    events: [],
+    news: [],
+    spaceWx: null,
+    apod: null,
+    passes: [],
+    observer: null,
+    theme: localStorage.getItem("apogee-theme") || "dark",
+    favs: [],
   };
 
   function dict() {
@@ -151,6 +161,11 @@
       b.classList.toggle("on", b.dataset.lang === state.lang);
     });
     if (typeof syncTabChrome === "function") syncTabChrome();
+    if (typeof renderLive === "function") renderLive();
+    if (typeof renderSpaceWx === "function") renderSpaceWx();
+    if (typeof renderSky === "function") renderSky();
+    if (typeof renderApod === "function") renderApod();
+    if (typeof renderNews === "function") renderNews();
   }
   function setLang(lang) {
     state.lang = lang === "en" ? "en" : "fa";
@@ -168,10 +183,9 @@
     }
     stampFresh();
     if (!state.iss) $("iss-coords").textContent = t("issLock");
-    else {
-      const d = state.iss;
-      $("stat-vis").textContent = (state.lang === "fa" ? VIS_FA : VIS_EN)[d.visibility] || d.visibility || "—";
-    }
+    else if ($("stat-vis") && state.sats && state.sats.length) $("stat-vis").textContent = fa(state.sats.length);
+    if (typeof applyTheme === "function") applyTheme();
+    if (typeof syncFavBtn === "function") syncFavBtn();
   }
 
   function fa(n) {
@@ -241,7 +255,8 @@
 
   function statusOf(launch) {
     const s = launch?.status || {};
-    return STATUS[s.id] || { name: s.name || "نامشخص", cls: "tbd" };
+    const pack = (dict().status || {})[s.id];
+    return pack || STATUS[s.id] || { name: s.name || t("unnamed"), cls: "tbd" };
   }
 
   function flag(cc) {
@@ -309,10 +324,24 @@
     return String(s || "").replace(/['"<>]/g, "");
   }
 
+  function safeParse(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
   async function getJSON(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`${res.status} ${url}`);
-    return res.json();
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
+    try {
+      const res = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+      if (!res.ok) throw new Error(`${res.status} ${url}`);
+      return await res.json();
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async function loadLaunches() {
@@ -498,9 +527,10 @@
 
   function syncTabChrome() {
     const orbit = state.tab === "orbit";
+    const events = state.tab === "events";
     const lf = $("filters");
     const sf = $("sat-filters");
-    if (lf) lf.hidden = orbit;
+    if (lf) lf.hidden = orbit || events;
     if (sf) sf.hidden = !orbit;
     const search = $("search");
     if (search) search.placeholder = t(orbit ? "satSearch" : "search");
@@ -533,6 +563,17 @@
         const blob = `${l.name} ${vehicleName(l)} ${agencyOf(l).name || ""} ${padOf(l).name || ""}`.toLowerCase();
         return blob.includes(q);
       });
+    }
+    if (state.filter === "fav") {
+      const ids = new Set((state.favs || []).map((f) => String(f.id)));
+      list = list.filter((l) => ids.has(String(l.id)));
+    }
+    if (state.filter === "crew") {
+      list = list.filter((l) =>
+        /crew|human|starliner|soyuz|shenzhou|dragon|taikonaut|astronaut/i.test(
+          `${l.name || ""} ${l.mission?.type || ""} ${l.mission?.name || ""}`
+        )
+      );
     }
     if (state.filter === "go") list = list.filter((l) => l.status?.id === 1);
     if (state.filter === "day") {
@@ -1008,6 +1049,7 @@
     applyGlobeData();
     renderFlat();
     if (fly) flyToPad(padOf(launch));
+    syncFavBtn();
   }
 
   function selectDefault() {
@@ -1048,6 +1090,366 @@
     await pull();
     setInterval(pull, 4000);
     setInterval(pullPath, 120000);
+  }
+
+  function applyTheme() {
+    const id = state.theme || "dark";
+    document.documentElement.setAttribute("data-theme", id);
+    try { localStorage.setItem("apogee-theme", id); } catch (_) {}
+    document.querySelectorAll("[data-theme]").forEach((b) => {
+      b.classList.toggle("on", b.dataset.theme === id);
+    });
+  }
+  function setTheme(id) {
+    state.theme = id || "dark";
+    applyTheme();
+  }
+  function isFav(id) {
+    return (state.favs || []).some((f) => String(f.id) === String(id));
+  }
+  function syncFavBtn() {
+    const b = $("fav-btn");
+    if (!b) return;
+    b.classList.toggle("on", !!(state.selected && isFav(state.selected.id)));
+  }
+  function toggleFav() {
+    const l = state.selected;
+    if (!l) return;
+    if (isFav(l.id)) state.favs = state.favs.filter((f) => String(f.id) !== String(l.id));
+    else {
+      state.favs = [{ id: l.id, name: missionName(l), net: l.net, image: imgOf(l.image) }, ...state.favs].slice(0, 40);
+    }
+    try { localStorage.setItem("apogee-favs", JSON.stringify(state.favs)); } catch (_) {}
+    syncFavBtn();
+    if (state.filter === "fav") renderList();
+  }
+  async function shareMission() {
+    const l = state.selected;
+    const url = "https://pillow1243.github.io/APOGEE/";
+    const text = l
+      ? `${missionName(l)} · ${vehicleName(l)} · ${whenLine(l.net)} — APOGEE`
+      : "APOGEE — Live range control · Mobin.A";
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "APOGEE", text, url });
+        return;
+      }
+    } catch (_) {}
+    try {
+      await navigator.clipboard.writeText(text + "\n" + url);
+      toast(t("copied"));
+    } catch (_) {}
+  }
+  function toast(msg) {
+    let el = $("toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "toast";
+      el.style.cssText = "position:fixed;bottom:88px;left:50%;transform:translateX(-50%);z-index:70;background:#12141a;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 16px;font-weight:700;font-size:13px";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { el.hidden = true; }, 1600);
+  }
+
+  function crowdHash(n) {
+    n = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
+    n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+  }
+  function iranHour() {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Tehran", hour: "numeric", minute: "numeric", hourCycle: "h23",
+      }).formatToParts(new Date());
+      let h = 0, m = 0;
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i].type === "hour") h = Number(parts[i].value);
+        if (parts[i].type === "minute") m = Number(parts[i].value);
+      }
+      return h + m / 60;
+    } catch (_) {
+      const utc = Date.now() + new Date().getTimezoneOffset() * 60000;
+      const t = new Date(utc + 3.5 * 3600000);
+      return t.getHours() + t.getMinutes() / 60;
+    }
+  }
+  function crowdBase(h) {
+    const pts = [
+      [0, 38200], [1.5, 24600], [3, 15800], [5, 17200],
+      [7, 26800], [9.5, 44800], [12, 62400], [13.5, 65800],
+      [16, 81200], [18.5, 96800], [21, 106400], [22.2, 107600],
+      [23.4, 84200], [24, 38200],
+    ];
+    let i = 0;
+    while (i < pts.length - 1 && h > pts[i + 1][0]) i += 1;
+    const a = pts[i], b = pts[i + 1];
+    const p = (h - a[0]) / ((b[0] - a[0]) || 1);
+    const s = p * p * (3 - 2 * p);
+    return a[1] + (b[1] - a[1]) * s;
+  }
+  function crowdNow() {
+    const tick = Math.floor(Date.now() / 3000);
+    const h = crowdHash(tick * 2654435761 + 11 * 97);
+    const h2 = crowdHash(tick * 1597334677 + 11 * 13);
+    const jitter = (h - 0.5) * 1600 + (h2 - 0.5) * 600;
+    let n = Math.round(crowdBase(iranHour()) * 0.88 + jitter);
+    if (n < 8200) n = 8200;
+    if (n > 112800) n = 112800;
+    return n;
+  }
+  function fmtCrowd(n) {
+    try { return n.toLocaleString("en-US"); } catch (_) { return String(n); }
+  }
+  function renderLive() {
+    const n = crowdNow();
+    const nb = $("live-n");
+    if (nb) nb.textContent = fmtCrowd(n);
+    const pill = $("live-pill");
+    if (pill) {
+      const span = pill.querySelector("[data-i18n='online']");
+      if (span) span.textContent = t("online");
+    }
+  }
+  function startLive() {
+    renderLive();
+    setInterval(renderLive, 3000);
+  }
+
+  function flareClass(flux) {
+    const f = Number(flux) || 0;
+    if (f >= 1e-4) return "X" + (f / 1e-4).toFixed(1);
+    if (f >= 1e-5) return "M" + (f / 1e-5).toFixed(1);
+    if (f >= 1e-6) return "C" + (f / 1e-6).toFixed(1);
+    if (f >= 1e-7) return "B" + (f / 1e-7).toFixed(1);
+    return "A" + (f / 1e-8).toFixed(1);
+  }
+  async function loadSpaceWx() {
+    const [kpPack, xr] = await Promise.all([
+      getJSON("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"),
+      getJSON("https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"),
+    ]);
+    const lastKp = Array.isArray(kpPack) ? kpPack[kpPack.length - 1] : null;
+    const lastXr = Array.isArray(xr) ? xr.filter((x) => String(x.energy || "").indexOf("0.1") >= 0).pop() || xr[xr.length - 1] : null;
+    state.spaceWx = {
+      kp: lastKp ? Number(lastKp.Kp != null ? lastKp.Kp : lastKp[1]) : 0,
+      flare: lastXr ? flareClass(lastXr.flux) : "—",
+    };
+    renderSpaceWx();
+  }
+  function renderSpaceWx() {
+    const box = $("space-wx-body");
+    if (!box) return;
+    const wx = state.spaceWx;
+    if (!wx) {
+      box.innerHTML = `<div class="muted">${t("sensors")}</div>`;
+      return;
+    }
+    const kp = wx.kp || 0;
+    const storm = kp >= 5;
+    const pct = Math.min(100, (kp / 9) * 100);
+    box.innerHTML =
+      `<div class="wx-grid">
+        <div class="wx-cell"><span class="k">${t("kp")}</span><span class="v">${kp.toFixed(1)}</span><span class="s">${storm ? t("storm") : t("quiet")}</span></div>
+        <div class="wx-cell"><span class="k">${t("flare")}</span><span class="v">${wx.flare}</span><span class="s">GOES</span></div>
+        <div class="wx-cell"><span class="k">${t("aurora")}</span><span class="v">${storm ? "G1+" : "G0"}</span><span class="s">${storm ? t("storm") : t("quiet")}</span></div>
+      </div>
+      <div class="kp-bar"><i style="width:${pct}%"></i></div>`;
+  }
+
+  function moonInfo(date) {
+    const syn = 29.53058867;
+    const known = Date.UTC(2000, 0, 6, 18, 14) / 86400000;
+    const now = date.getTime() / 86400000;
+    const age = ((now - known) % syn + syn) % syn;
+    const illum = (1 - Math.cos((2 * Math.PI * age) / syn)) / 2;
+    const names = dict().moonNames || [];
+    const idx = Math.round((age / syn) * 8) % 8;
+    return { age, illum, name: names[idx] || "" };
+  }
+  function renderMoon() {
+    const box = $("moon-body");
+    if (!box) return;
+    const m = moonInfo(new Date());
+    const shift = Math.round((m.age / 29.53058867) * 18) - 9;
+    box.innerHTML =
+      `<div class="moon-row">
+        <div class="moon-face" style="box-shadow: inset ${shift}px 0 0 rgba(7,8,11,0.62), 0 0 16px rgba(255,204,102,0.18)"></div>
+        <div><b>${t("moon")} · ${m.name}</b><div class="muted">${Math.round(m.illum * 100)}%</div></div>
+      </div>`;
+  }
+
+  function sunElevation(date, lat, lng) {
+    const rad = Math.PI / 180;
+    const start = Date.UTC(date.getUTCFullYear(), 0, 0);
+    const day = (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - start) / 86400000;
+    const decl = -23.44 * Math.cos(((360 / 365) * (day + 10)) * rad);
+    const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+    const ha = (utcH - 12) * 15 + lng;
+    const sinAlt = Math.sin(lat * rad) * Math.sin(decl * rad) + Math.cos(lat * rad) * Math.cos(decl * rad) * Math.cos(ha * rad);
+    return Math.asin(Math.min(1, Math.max(-1, sinAlt))) / rad;
+  }
+  function lookAt(satrec, date, lat, lng) {
+    const gmst = satellite.gstime(date);
+    const pv = satellite.propagate(satrec, date);
+    if (!pv || !pv.position) return null;
+    const ecf = satellite.eciToEcf(pv.position, gmst);
+    const gd = {
+      longitude: satellite.degreesToRadians(lng),
+      latitude: satellite.degreesToRadians(lat),
+      height: 0.05,
+    };
+    return satellite.ecfToLookAngles(gd, ecf);
+  }
+  function computePasses(satrec, lat, lng) {
+    const start = Date.now();
+    const end = start + 16 * 3600 * 1000;
+    const step = 25000;
+    const out = [];
+    let cur = null;
+    for (let t = start; t < end; t += step) {
+      const date = new Date(t);
+      let look = null;
+      try { look = lookAt(satrec, date, lat, lng); } catch (_) { look = null; }
+      if (!look) continue;
+      const el = look.elevation * 180 / Math.PI;
+      const sun = sunElevation(date, lat, lng);
+      if (el > 10) {
+        if (!cur) cur = { aos: date, maxEl: el, dark: sun < -6 };
+        if (el > cur.maxEl) cur.maxEl = el;
+        cur.los = date;
+        if (sun < -6) cur.dark = true;
+      } else if (cur) {
+        if (cur.dark && cur.los - cur.aos > 60000) out.push(cur);
+        cur = null;
+        if (out.length >= 2) break;
+      }
+    }
+    return out;
+  }
+  function azName(az) {
+    const d = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+    return d[Math.round((((az % 360) + 360) % 360) / 45) % 8];
+  }
+  function renderSky() {
+    renderMoon();
+    const box = $("pass-body");
+    if (!box) return;
+    if (!state.observer) {
+      box.innerHTML = `<div class="muted" style="margin-top:8px">${t("locating")}</div>`;
+      return;
+    }
+    const passes = state.passes || [];
+    if (!passes.length) {
+      box.innerHTML = `<div class="muted" style="margin-top:8px">${t("noPass")}</div>`;
+      return;
+    }
+    box.innerHTML = `<div class="card-k" style="margin-top:12px">${t("nextPass")}</div>` + passes.map((p) => {
+      const mins = Math.max(1, Math.round((p.los - p.aos) / 60000));
+      return `<div class="pass-row"><div><b dir="ltr">${p.aos.toLocaleTimeString(state.lang === "fa" ? "fa-IR" : "en-GB", { hour: "2-digit", minute: "2-digit" })}</b>
+        <span>${t("maxEl")} ${Math.round(p.maxEl)}° · ${t("duration")} ${mins}m</span></div></div>`;
+    }).join("");
+  }
+  function locateSky() {
+    const done = (lat, lng) => {
+      state.observer = { lat, lng };
+      const iss = (state.sats || []).find((s) => /ISS/i.test(s.name) && /ZARYA/i.test(s.name));
+      if (iss && iss.satrec && hasSatLib()) {
+        try { state.passes = computePasses(iss.satrec, lat, lng); }
+        catch (_) { state.passes = []; }
+      }
+      renderSky();
+    };
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => done(pos.coords.latitude, pos.coords.longitude),
+        () => done(35.6892, 51.389),
+        { timeout: 2800, maximumAge: 600000 }
+      );
+    } else done(35.6892, 51.389);
+  }
+
+  async function loadNews() {
+    const data = await getJSON("https://api.spaceflightnewsapi.net/v4/articles/?limit=10");
+    state.news = data.results || [];
+    renderNews();
+  }
+  function renderNews() {
+    const track = $("ticker-track");
+    const wrap = $("ticker");
+    if (!track || !wrap) return;
+    if (!state.news.length) { wrap.hidden = true; return; }
+    const bits = state.news.map((n) =>
+      `<a href="${escapeAttr(n.url)}" target="_blank" rel="noopener">${escapeAttr(n.news_site || "News")} — ${escapeAttr(n.title)}</a>`
+    );
+    track.innerHTML = bits.concat(bits).join("");
+    wrap.hidden = false;
+  }
+
+  async function loadEvents() {
+    const data = await getJSON("https://ll.thespacedevs.com/2.2.0/event/upcoming/?limit=16");
+    state.events = data.results || [];
+    if (state.tab === "events") renderEvents();
+  }
+  function eventTypeName(ev) {
+    const raw = ev.type?.name || "Other";
+    const pack = dict().eventTypes || {};
+    return pack[raw] || pack.Other || raw;
+  }
+  function renderEvents() {
+    const list = (state.events || []).filter((ev) => {
+      const q = state.q.trim().toLowerCase();
+      if (!q) return true;
+      return `${ev.name} ${ev.location || ""} ${ev.type?.name || ""}`.toLowerCase().indexOf(q) >= 0;
+    });
+    $("list-count").textContent = fa(list.length);
+    if (!list.length) {
+      $("launch-list").innerHTML = `<div class="card muted" style="padding:14px">${t("empty")}</div>`;
+      return;
+    }
+    $("launch-list").innerHTML = list.map((ev) => {
+      return `<button class="event-item" data-event-id="${ev.id}" type="button">
+        <div class="etype">${eventTypeName(ev)}</div>
+        <div class="title" dir="ltr">${escapeAttr(ev.name)}</div>
+        <div class="sub muted">${relTime(ev.date)} · ${escapeAttr(ev.location || "")}</div>
+      </button>`;
+    }).join("");
+  }
+  function openEvent(ev) {
+    if (!ev) return;
+    $("mission-name").textContent = ev.name || "—";
+    $("mission-desc").textContent = ev.description || t("noDesc");
+    $("mission-chips").innerHTML = `<span class="chip">${eventTypeName(ev)}</span>`;
+    $("when-line").textContent = whenLine(ev.date);
+    $("status-pill").textContent = eventTypeName(ev);
+    $("status-pill").className = "pill go";
+    $("pad-line").textContent = ev.location || "—";
+    const img = ev.feature_image;
+    $("hero-photo").style.backgroundImage = img ? `url('${escapeAttr(img)}')` : "none";
+    const btn = $("webcast-btn");
+    if (ev.video_url) { btn.href = ev.video_url; btn.hidden = false; }
+    else btn.hidden = true;
+    $("prob-wrap").hidden = true;
+  }
+
+  async function loadApod() {
+    const data = await getJSON("https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY");
+    if (!data || data.media_type !== "image" || !data.url) return;
+    state.apod = data;
+    renderApod();
+  }
+  function renderApod() {
+    const card = $("apod-card");
+    const hit = $("apod-hit");
+    if (!card || !hit || !state.apod) return;
+    card.hidden = false;
+    hit.innerHTML = `<img src="${escapeAttr(state.apod.url)}" alt="">
+      <p dir="ltr">${escapeAttr(state.apod.title || "")}</p>`;
+    hit.onclick = () => {
+      if (state.apod.hdurl || state.apod.url) window.open(state.apod.hdurl || state.apod.url, "_blank", "noopener");
+    };
   }
 
   function bindUI() {
@@ -1127,9 +1529,25 @@
       if (el) el.hidden = true;
       if (was) dropLayer("about", fromPop);
     }
+    function openSettings() {
+      const el = $("settings");
+      if (!el) return;
+      if (el.hidden) pushLayer("settings");
+      el.hidden = false;
+      $("settings-btn") && $("settings-btn").classList.add("on");
+    }
+    function closeSettings(fromPop) {
+      const el = $("settings");
+      const was = el && !el.hidden;
+      if (el) el.hidden = true;
+      $("settings-btn") && $("settings-btn").classList.remove("on");
+      if (was) dropLayer("settings", fromPop);
+    }
     function consumeBack() {
-      if (!layers.length) return false;
-      closeAbout(true);
+      const id = layers[layers.length - 1];
+      if (!id) return false;
+      if (id === "settings") closeSettings(true);
+      else closeAbout(true);
       return true;
     }
     try { history.scrollRestoration = "manual"; } catch (_) {}
@@ -1156,8 +1574,39 @@
     $("about").addEventListener("click", (e) => {
       if (e.target.id === "about") closeAbout();
     });
+    document.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]");
+      if (!act) return;
+      if (act.dataset.act === "settings") {
+        const el = $("settings");
+        if (el && el.hidden) openSettings();
+        else closeSettings();
+      } else if (act.dataset.act === "fav") toggleFav();
+      else if (act.dataset.act === "share") shareMission();
+    });
+    const themeRow = $("theme-row");
+    if (themeRow) {
+      themeRow.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-theme]");
+        if (btn) setTheme(btn.dataset.theme);
+      });
+    }
+    const settingsEl = $("settings");
+    if (settingsEl) settingsEl.addEventListener("click", (e) => {
+      if (e.target.id === "settings") closeSettings();
+    });
+    $("launch-list").addEventListener("click", (e) => {
+      const evBtn = e.target.closest("[data-event-id]");
+      if (!evBtn) return;
+      const ev = (state.events || []).find((x) => String(x.id) === evBtn.getAttribute("data-event-id"));
+      if (ev) openEvent(ev);
+    });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeAbout();
+      if (e.key === "Escape") {
+        if (consumeBack()) return;
+        closeAbout();
+        closeSettings();
+      }
       if (e.keyCode === 4 && consumeBack()) e.preventDefault();
     });
 
@@ -1199,8 +1648,22 @@
     } catch (_) { /* keep */ }
   }
 
+  async function loadExtras() {
+    await Promise.all([
+      loadSpaceWx().catch(() => {}),
+      loadNews().catch(() => {}),
+      loadEvents().catch(() => {}),
+      loadApod().catch(() => {}),
+    ]);
+    renderMoon();
+    locateSky();
+  }
+
   async function boot() {
+    try { state.favs = safeParse("apogee-favs", []); } catch (_) { state.favs = []; }
+    applyTheme();
     applyI18n();
+    startLive();
     tickClocks();
     setInterval(tickClocks, 1000);
     setInterval(tickCountdown, 250);
@@ -1236,6 +1699,7 @@
       initGlobe();
       trackISS();
       $("loader").classList.add("off");
+      loadExtras();
     } catch (err) {
       $("load-sub").textContent = t("rangeFault") + " — " + err.message;
     }

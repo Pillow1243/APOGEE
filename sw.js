@@ -1,9 +1,11 @@
 /* APOGEE service worker — ساخته شده توسط مبین.آ */
-const CACHE = "apogee-shell-v2";
+const CACHE = "apogee-shell-v5";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./plus.css",
+  "./responsive.css",
   "./app.js",
   "./i18n.js",
   "./manifest.webmanifest",

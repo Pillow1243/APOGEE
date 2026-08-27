@@ -26,9 +26,13 @@ The **repo catalog** (`data/satellites.json`) refreshes automatically every 30 m
 
 | Feed | Source |
 |---|---|
-| Launches, pads, agencies, expeditions | [Launch Library 2](https://thespacedevs.com) |
+| Launches, pads, agencies, expeditions, events | [Launch Library 2](https://thespacedevs.com) |
 | Pad weather | [Open-Meteo](https://open-meteo.com) |
 | ISS position | [Where The ISS At](https://wheretheiss.at) |
+| Space weather | [NOAA SWPC](https://www.swpc.noaa.gov) |
+| Space news | [Spaceflight News API](https://spaceflightnewsapi.net) |
+| Astronomy picture | [NASA APOD](https://apod.nasa.gov) |
+| ISS pass / moon | computed in-browser from NORAD TLEs |
 
 FA / EN toggle in the header. Language is stored in the browser.
 

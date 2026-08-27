@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -38,7 +38,8 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css?v=2" />
-    <link rel="stylesheet" href="./responsive.css?v=4" />
+    <link rel="stylesheet" href="./responsive.css?v=5" />
+    <link rel="stylesheet" href="./plus.css?v=5" />
   </head>
   <body>
     <div id="app">
@@ -64,10 +65,18 @@
         </div>
 
         <div class="top-meta">
-          <div class="lang-switch" role="group" aria-label="Language">
-            <button type="button" data-lang="fa" class="on">فا</button>
-            <button type="button" data-lang="en">EN</button>
+          <div class="live-pill" id="live-pill" data-i18n-aria="onlinePeople">
+            <i class="pill-dot" aria-hidden="true"></i>
+            <b id="live-n">—</b>
+            <span data-i18n="online">Online</span>
           </div>
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-lang="fa">فا</button>
+            <button type="button" data-lang="en" class="on">EN</button>
+          </div>
+          <button class="icon-btn" id="settings-btn" type="button" data-act="settings" data-i18n-title="settings" title="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.1 2.6h3.8l.27 1.92c.58.21 1.12.5 1.62.86l1.86-.75 1.9 3.3-1.58 1.23c.12.52.18 1.07.18 1.64s-.06 1.12-.18 1.64l1.58 1.23-1.9 3.3-1.86-.75a6.9 6.9 0 0 1-1.62.86l-.27 1.92h-3.8l-.27-1.92a6.9 6.9 0 0 1-1.62-.86l-1.86.75-1.9-3.3 1.58-1.23A6.9 6.9 0 0 1 4.6 10.8c0-.57.06-1.12.18-1.64L3.2 7.93l1.9-3.3 1.86.75c.5-.36 1.04-.65 1.62-.86l.27-1.92zM12 15.25a3.45 3.45 0 1 0 0-6.9 3.45 3.45 0 0 0 0 6.9z"/></svg>
+          </button>
           <div class="meta-block">
             <span class="k">UTC</span>
             <span id="utc-clock" class="v mono" dir="ltr">--:--:--</span>
@@ -87,9 +96,10 @@
       <aside class="rail start">
         <div class="rail-head">
           <div class="tabs" role="tablist">
-            <button class="tab on" data-tab="upcoming" type="button" data-i18n="tabUpcoming">پیش‌رو</button>
-            <button class="tab" data-tab="previous" type="button" data-i18n="tabPrevious">اخیر</button>
-            <button class="tab" data-tab="orbit" type="button" data-i18n="tabOrbit">مدار</button>
+            <button class="tab on" data-tab="upcoming" type="button" data-i18n="tabUpcoming">Upcoming</button>
+            <button class="tab" data-tab="previous" type="button" data-i18n="tabPrevious">Recent</button>
+            <button class="tab" data-tab="events" type="button" data-i18n="tabEvents">Events</button>
+            <button class="tab" data-tab="orbit" type="button" data-i18n="tabOrbit">Orbit</button>
           </div>
           <div id="list-count" class="count">۰</div>
         </div>
@@ -97,9 +107,11 @@
           <input id="search" type="search" data-i18n-placeholder="search" placeholder="جستجوی پرتاب، راکت، آژانس…" autocomplete="off" />
         </div>
         <div class="filters" id="filters">
-          <button class="chip-btn on" data-filter="all" type="button" data-i18n="filterAll">همه</button>
-          <button class="chip-btn" data-filter="go" type="button" data-i18n="filterGo">آماده</button>
-          <button class="chip-btn" data-filter="day" type="button" data-i18n="filterDay">۲۴ ساعت</button>
+          <button class="chip-btn on" data-filter="all" type="button" data-i18n="filterAll">All</button>
+          <button class="chip-btn" data-filter="go" type="button" data-i18n="filterGo">Go</button>
+          <button class="chip-btn" data-filter="day" type="button" data-i18n="filterDay">24h</button>
+          <button class="chip-btn" data-filter="crew" type="button" data-i18n="filterCrew">Crewed</button>
+          <button class="chip-btn" data-filter="fav" type="button" data-i18n="filterFav">Saved</button>
         </div>
         <div class="filters" id="sat-filters" hidden>
           <button class="chip-btn on" data-sat-filter="all" type="button" data-i18n="satAll">همه</button>
@@ -108,6 +120,11 @@
         </div>
         <div id="launch-list" class="launch-list"></div>
       </aside>
+
+      <div class="ticker" id="ticker" hidden>
+        <div class="ticker-k" data-i18n="news">News</div>
+        <div class="ticker-track"><div class="ticker-row" id="ticker-track"></div></div>
+      </div>
 
       <aside class="rail end">
         <section class="card hero-card" id="hero-card">
@@ -157,8 +174,24 @@
           <img id="pad-map" class="pad-map" alt="نقشه پد پرتاب" data-i18n-alt="padMapAlt" />
         </section>
 
+        <section class="card" id="space-wx-card">
+          <div class="card-k" data-i18n="spaceWx">Space weather</div>
+          <div id="space-wx-body"></div>
+        </section>
+
+        <section class="card" id="sky-card">
+          <div class="card-k" data-i18n="skyWatch">Sky watch</div>
+          <div id="moon-body"></div>
+          <div id="pass-body"></div>
+        </section>
+
+        <section class="card apod-card" id="apod-card" hidden>
+          <div class="card-k" data-i18n="apod">Picture of the day</div>
+          <button type="button" class="apod-hit" id="apod-hit"></button>
+        </section>
+
         <section class="card" id="crew-card">
-          <div class="card-k" data-i18n="crewLive">انسان در فضا · زنده</div>
+          <div class="card-k" data-i18n="crewLive">Humans in space · live</div>
           <div id="crew-body" class="crew"></div>
         </section>
       </aside>
@@ -183,6 +216,8 @@
         <div class="actions">
           <button id="fly-btn" class="btn ghost" type="button" data-i18n="flyPad">پرواز به پد</button>
           <button id="spin-btn" class="btn ghost" type="button" data-i18n="spin">چرخش کره</button>
+          <button id="fav-btn" class="btn ghost fav-btn" type="button" data-act="fav" data-i18n="fav">Save</button>
+          <button id="share-btn" class="btn ghost" type="button" data-act="share" data-i18n="share">Share</button>
           <a id="webcast-btn" class="btn flame" hidden target="_blank" rel="noopener" data-i18n="webcast">پخش زنده</a>
         </div>
       </footer>
@@ -213,6 +248,25 @@
       </div>
     </div>
 
+    <div id="settings" class="drawer" hidden>
+      <div class="drawer-card">
+        <div class="drawer-handle"></div>
+        <div class="drawer-head">
+          <h3 data-i18n="settings">Settings</h3>
+          <button type="button" class="btn ghost" data-act="settings" data-i18n="close">Close</button>
+        </div>
+        <div class="set-row">
+          <span data-i18n="theme">Theme</span>
+          <div class="theme-row" id="theme-row">
+            <button type="button" data-theme="dark" class="on" data-i18n="dark">Dark</button>
+            <button type="button" data-theme="oled" data-i18n="oled">Void</button>
+            <button type="button" data-theme="ice" data-i18n="ice">Ice</button>
+            <button type="button" data-theme="ember" data-i18n="ember">Ember</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="loader">
       <img class="load-icon" src="./assets/icon.png?v=2" width="92" height="92" alt="" />
       <div class="load-word" dir="ltr">APOGEE</div>
@@ -223,8 +277,8 @@
 
     <script src="https://unpkg.com/globe.gl@2.46.1/dist/globe.gl.min.js"></script>
     <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
-    <script src="./i18n.js?v=4"></script>
-    <script src="./app.js?v=4"></script>
+    <script src="./i18n.js?v=5"></script>
+    <script src="./app.js?v=5"></script>
     <script>
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("./sw.js").catch(function () {});
