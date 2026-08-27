@@ -13,14 +13,18 @@ UA = {"User-Agent": "APOGEE-catalog/1.0 (https://github.com/Pillow1243/APOGEE)"}
 
 GROUPS = {
     "stations": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
-    "new": "https://celestrak.org/NORAD/elements/tle-new.txt",
+    "new": "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle",
 }
 
 
 def fetch_text(url: str) -> str:
     req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=40) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:  # noqa: BLE001
+        print(f"skip {url}: {exc}")
+        return ""
 
 
 def parse_tle(text: str, group: str) -> list[dict]:
@@ -55,7 +59,11 @@ def parse_tle(text: str, group: str) -> list[dict]:
 def main() -> None:
     by_id: dict[int, dict] = {}
     for group, url in GROUPS.items():
-        rows = parse_tle(fetch_text(url), group)
+        text = fetch_text(url)
+        if not text or "<html" in text[:80].lower():
+            print(f"{group}: empty")
+            continue
+        rows = parse_tle(text, group)
         print(f"{group}: {len(rows)}")
         for row in rows:
             nid = row["id"]
@@ -63,6 +71,9 @@ def main() -> None:
                 continue
             by_id[nid] = row
     sats = list(by_id.values())
+    if not sats:
+        print("kept previous catalog — fetch empty")
+        return
     sats.sort(key=lambda s: (0 if s["group"] == "stations" else 1, s["name"]))
     payload = {
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

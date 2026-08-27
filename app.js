@@ -1680,13 +1680,17 @@
     try {
       $("load-sub").textContent = t("loadLock");
       await Promise.all([
-        loadLaunches(),
-        loadPrevious(),
+        loadLaunches().catch(() => {
+          state.upcoming = state.upcoming || [];
+        }),
+        loadPrevious().catch(() => {
+          state.previous = state.previous || [];
+        }),
         loadCrew().catch(() => {
           state.crew = [];
         }),
         loadCatalog().catch(() => {
-          state.sats = [];
+          state.sats = state.sats || [];
         }),
       ]);
       tickSats();
