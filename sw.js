@@ -1,13 +1,14 @@
 /* APOGEE service worker — ساخته شده توسط مبین.آ */
-const CACHE = "apogee-shell-v5";
+const CACHE = "apogee-shell-v6";
 const SHELL = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./plus.css",
-  "./responsive.css",
-  "./app.js",
-  "./i18n.js",
+  "./styles.css?v=2",
+  "./plus.css?v=6",
+  "./responsive.css?v=5",
+  "./v2.css?v=1",
+  "./app.js?v=7",
+  "./i18n.js?v=6",
   "./manifest.webmanifest",
   "./assets/icon.png",
   "./assets/icon-192.png",
@@ -45,7 +46,9 @@ self.addEventListener("fetch", (event) => {
         return res;
       })
       .catch(() =>
-        caches.match(req).then((hit) => hit || caches.match("./index.html"))
+        caches
+          .match(req, { ignoreSearch: true })
+          .then((hit) => hit || caches.match("./index.html"))
       )
   );
 });
