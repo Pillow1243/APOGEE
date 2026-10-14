@@ -186,6 +186,9 @@
     else if ($("stat-vis") && state.sats && state.sats.length) $("stat-vis").textContent = fa(state.sats.length);
     if (typeof applyTheme === "function") applyTheme();
     if (typeof syncFavBtn === "function") syncFavBtn();
+    if (typeof renderTelemetry === "function") renderTelemetry();
+    if (typeof syncRemindBtn === "function") syncRemindBtn();
+    if (typeof renderEvents === "function" && state.tab === "events") renderEvents();
   }
 
   function fa(n) {
@@ -428,7 +431,25 @@
   }
 
   function hasSatLib() {
-    return typeof satellite === "object" && typeof satellite.json2satrec === "function";
+    return (
+      typeof satellite === "object" &&
+      typeof satellite.twoline2satrec === "function" &&
+      typeof satellite.propagate === "function"
+    );
+  }
+
+  /* The vendored satellite.js only accepts numeric date parts in
+     propagate(); a Date object yields NaN. Always call it like this. */
+  function propagateAt(satrec, date) {
+    return satellite.propagate(
+      satrec,
+      date.getUTCFullYear(),
+      date.getUTCMonth() + 1,
+      date.getUTCDate(),
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds() + date.getUTCMilliseconds() / 1000
+    );
   }
 
   async function loadCatalog() {
@@ -480,7 +501,7 @@
     const gmst = satellite.gstime(now);
     for (const s of state.sats) {
       try {
-        const pv = satellite.propagate(s.satrec, now);
+        const pv = propagateAt(s.satrec, now);
         if (!pv || !pv.position) continue;
         const geo = satellite.eciToGeodetic(pv.position, gmst);
         s.lat = satellite.radiansToDegrees(geo.latitude);
@@ -503,6 +524,7 @@
     applyGlobeData();
     renderFlat();
     if (state.tab === "orbit") renderSatList();
+    renderTelemetry();
   }
 
   function renderSatList() {
@@ -1050,6 +1072,7 @@
     renderFlat();
     if (fly) flyToPad(padOf(launch));
     syncFavBtn();
+    syncRemindBtn();
   }
 
   function selectDefault() {
@@ -1065,7 +1088,6 @@
         state.iss = d;
         $("iss-coords").textContent =
           `${d.latitude.toFixed(2)}°  ${d.longitude.toFixed(2)}°  ·  ${Math.round(d.altitude)} km  ·  ${Math.round(d.velocity)} km/h`;
-        $("stat-vis").textContent = VIS_FA[d.visibility] || d.visibility || "—";
         applyGlobeData();
         renderFlat();
       } catch (_) {
@@ -1096,6 +1118,11 @@
     const id = state.theme || "dark";
     document.documentElement.setAttribute("data-theme", id);
     try { localStorage.setItem("apogee-theme", id); } catch (_) {}
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.content =
+        id === "oled" ? "#000000" : id === "ice" ? "#061018" : id === "ember" ? "#140806" : "#07080b";
+    }
     document.querySelectorAll("[data-theme]").forEach((b) => {
       b.classList.toggle("on", b.dataset.theme === id);
     });
@@ -1145,13 +1172,13 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "toast";
-      el.style.cssText = "position:fixed;bottom:88px;left:50%;transform:translateX(-50%);z-index:70;background:#12141a;border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 16px;font-weight:700;font-size:13px";
+      el.setAttribute("role", "status");
       document.body.appendChild(el);
     }
     el.textContent = msg;
     el.hidden = false;
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { el.hidden = true; }, 1600);
+    toast._t = setTimeout(() => { el.hidden = true; }, 2200);
   }
 
   function crowdHash(n) {
@@ -1293,8 +1320,8 @@
   }
   function lookAt(satrec, date, lat, lng) {
     const gmst = satellite.gstime(date);
-    const pv = satellite.propagate(satrec, date);
-    if (!pv || !pv.position) return null;
+    const pv = propagateAt(satrec, date);
+    if (!pv || !pv.position || pv.position.x == null || Number.isNaN(pv.position.x)) return null;
     const ecf = satellite.eciToEcf(pv.position, gmst);
     const gd = {
       longitude: satellite.degreesToRadians(lng),
@@ -1505,6 +1532,30 @@
     $("spin-btn").addEventListener("click", toggleSpin);
     $("iss-chip").addEventListener("click", flyISS);
     $("spin-btn").classList.add("on");
+    $("palette-btn").addEventListener("click", () => openPalette());
+    $("hotkeys-btn").addEventListener("click", () => openHotkeys());
+    $("palette-overlay").addEventListener("click", (e) => {
+      if (e.target.id === "palette-overlay") closePalette();
+    });
+    $("hotkeys-overlay").addEventListener("click", (e) => {
+      if (e.target.id === "hotkeys-overlay") closeHotkeys();
+    });
+    $("palette-input").addEventListener("input", (e) => renderPalette(e.target.value || ""));
+    $("palette-results").addEventListener("click", (e) => {
+      const item = e.target.closest("[data-pi]");
+      if (!item) return;
+      const it = paletteFlat[Number(item.getAttribute("data-pi"))];
+      if (it && it.run) it.run();
+    });
+    $("palette-results").addEventListener("mousemove", (e) => {
+      const item = e.target.closest("[data-pi]");
+      if (!item) return;
+      const i = Number(item.getAttribute("data-pi"));
+      if (i !== paletteIdx) {
+        paletteIdx = i;
+        markPaletteActive();
+      }
+    });
     document.querySelectorAll("[data-lang]").forEach((b) => {
       b.addEventListener("click", () => setLang(b.dataset.lang));
     });
@@ -1583,6 +1634,7 @@
         else closeSettings();
       } else if (act.dataset.act === "fav") toggleFav();
       else if (act.dataset.act === "share") shareMission();
+      else if (act.dataset.act === "remind") toggleRemind();
     });
     const themeRow = $("theme-row");
     if (themeRow) {
@@ -1603,6 +1655,8 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        if (paletteOpen()) { closePalette(); return; }
+        if (hotkeysOpen()) { closeHotkeys(); return; }
         if (consumeBack()) return;
         closeAbout();
         closeSettings();
@@ -1611,14 +1665,566 @@
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
-      if (e.key !== "j" && e.key !== "k" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const list = visibleList();
-      const i = list.findIndex((x) => state.selected && x.id === state.selected.id);
-      const dir = e.key === "j" || e.key === "ArrowDown" ? 1 : -1;
-      const n = list[i + dir];
-      if (n) selectLaunch(n, true);
+      const typing =
+        e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA");
+      const key = e.key || "";
+
+      /* command palette — works even while typing */
+      if ((e.metaKey || e.ctrlKey) && (key === "k" || key === "K" || key === "ل" || key === "ک")) {
+        e.preventDefault();
+        if (paletteOpen()) closePalette();
+        else {
+          closeHotkeys();
+          openPalette();
+        }
+        return;
+      }
+
+      /* palette keyboard navigation */
+      if (key === "Escape") {
+        if (paletteOpen()) closePalette();
+        else if (hotkeysOpen()) closeHotkeys();
+        return;
+      }
+      if (paletteOpen()) {
+        if (key === "ArrowDown" || key === "ArrowUp") {
+          e.preventDefault();
+          const n = paletteFlat.length;
+          if (!n) return;
+          paletteIdx = (paletteIdx + (key === "ArrowDown" ? 1 : n - 1)) % n;
+          markPaletteActive();
+          return;
+        }
+        if (key === "Enter") {
+          e.preventDefault();
+          const it = paletteFlat[paletteIdx];
+          if (it && it.run) it.run();
+          return;
+        }
+        return;
+      }
+
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (key === "j" || key === "k" || key === "ArrowDown" || key === "ArrowUp") {
+        const list = visibleList();
+        const i = list.findIndex((x) => state.selected && x.id === state.selected.id);
+        const dir = key === "j" || key === "ArrowDown" ? 1 : -1;
+        const n = list[i + dir];
+        if (n) selectLaunch(n, true);
+        return;
+      }
+
+      switch (key.toLowerCase()) {
+        case "/":
+          e.preventDefault();
+          if (hotkeysOpen()) closeHotkeys();
+          $("search") && $("search").focus();
+          break;
+        case "?":
+          e.preventDefault();
+          if (hotkeysOpen()) closeHotkeys();
+          else openHotkeys();
+          break;
+        case "s":
+          shareMission();
+          break;
+        case "f":
+          toggleFav();
+          break;
+        case "g":
+          toggleSpin();
+          break;
+        case "p":
+          flyToPad(padOf(state.selected));
+          break;
+        case "i":
+          flyISS();
+          break;
+        case "r":
+          toggleRemind();
+          break;
+        case "t":
+          cycleTheme();
+          break;
+        case "w": {
+          const btn = $("webcast-btn");
+          if (btn && !btn.hidden) window.open(btn.href, "_blank", "noopener");
+          break;
+        }
+        case "1":
+          switchTab("upcoming");
+          break;
+        case "2":
+          switchTab("previous");
+          break;
+        case "3":
+          switchTab("events");
+          break;
+        case "4":
+          switchTab("orbit");
+          break;
+        default:
+          break;
+      }
     });
+  }
+
+  /* ==================== APOGEE v2 — upgrade block ==================== */
+
+  /* ---------- orbit telemetry ---------- */
+  function renderTelemetry() {
+    const el = $("tel-grid");
+    const nameEl = $("tel-name");
+    if (!el) return;
+    const s = trackedSat();
+    if (!s || s.lat == null) {
+      if (nameEl) nameEl.textContent = "—";
+      el.innerHTML = `<div class="muted">${t("telWaiting")}</div>`;
+      return;
+    }
+    if (nameEl) nameEl.textContent = s.name;
+    const periodMin =
+      s.satrec && s.satrec.no ? (2 * Math.PI) / s.satrec.no : null;
+    const foot =
+      s.alt != null ? 6371 * Math.acos(Math.min(1, 6371 / (6371 + s.alt))) : null;
+    const cells = [
+      [t("telAlt"), s.alt != null ? `${fa(Math.round(s.alt))} <em>km</em>` : "—"],
+      [t("telVel"), s.vel != null ? `${fa(Math.round(s.vel))} <em>km/h</em>` : "—"],
+      [t("telLat"), s.lat != null ? `${fa(s.lat.toFixed(2))}°` : "—"],
+      [t("telLng"), s.lng != null ? `${fa(s.lng.toFixed(2))}°` : "—"],
+      [t("telPeriod"), periodMin ? `${fa(Math.round(periodMin))} <em>min</em>` : "—"],
+      [t("telFootprint"), foot != null ? `${fa(Math.round(foot))} <em>km</em>` : "—"],
+    ];
+    el.innerHTML = cells
+      .map(
+        ([k, v]) =>
+          `<div class="tel-cell"><span class="tel-k">${k}</span><span class="tel-v">${v}</span></div>`
+      )
+      .join("");
+  }
+
+  /* ---------- launch reminders ---------- */
+  function loadReminders() {
+    const list = safeParse("apogee-reminders", []);
+    state.reminders = Array.isArray(list) ? list : [];
+  }
+  function saveReminders() {
+    try {
+      localStorage.setItem("apogee-reminders", JSON.stringify(state.reminders || []));
+    } catch (_) {}
+  }
+  function hasRemind(id) {
+    return (state.reminders || []).some((r) => String(r.id) === String(id));
+  }
+  function syncRemindBtn() {
+    const b = $("remind-btn");
+    if (!b) return;
+    b.classList.toggle("on", !!(state.selected && hasRemind(state.selected.id)));
+    b.title = t("remind");
+  }
+  async function toggleRemind() {
+    const l = state.selected;
+    if (!l) return;
+    if (hasRemind(l.id)) {
+      state.reminders = state.reminders.filter((r) => String(r.id) !== String(l.id));
+      saveReminders();
+      syncRemindBtn();
+      toast(t("remindOff"));
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      toast(t("remindDenied"));
+      return;
+    }
+    let perm = Notification.permission;
+    if (perm === "default") {
+      try {
+        perm = await Notification.requestPermission();
+      } catch (_) {
+        perm = "denied";
+      }
+    }
+    if (perm !== "granted") {
+      toast(t("remindDenied"));
+      return;
+    }
+    state.reminders = [
+      { id: l.id, name: missionName(l), net: l.net, fired: {} },
+      ...(state.reminders || []),
+    ].slice(0, 30);
+    saveReminders();
+    syncRemindBtn();
+    toast(t("remindOn"));
+  }
+  function notify(title, body) {
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(title, {
+          body,
+          icon: "./assets/icon-192.png",
+          tag: "apogee-" + String(title).slice(0, 24),
+        });
+      }
+    } catch (_) {}
+  }
+  function checkReminders() {
+    const list = state.reminders || [];
+    if (!list.length) return;
+    const now = Date.now();
+    let dirty = false;
+    const keep = [];
+    for (const r of list) {
+      const net = new Date(r.net).getTime();
+      if (!isFinite(net) || net < now - 864e5) {
+        dirty = true;
+        continue;
+      }
+      r.fired = r.fired || {};
+      const min = (net - now) / 60000;
+      if (min <= 0 && !r.fired.t0) {
+        r.fired.t0 = 1;
+        dirty = true;
+        notify("APOGEE", t("remindLiftoff", r.name));
+      } else if (min > 0 && min <= 10 && !r.fired.t10) {
+        r.fired.t10 = 1;
+        dirty = true;
+        notify("APOGEE", t("remindGo", r.name));
+      } else if (min > 10 && min <= 60 && !r.fired.t60) {
+        r.fired.t60 = 1;
+        dirty = true;
+        notify("APOGEE", t("remindHour", r.name));
+      }
+      keep.push(r);
+    }
+    state.reminders = keep;
+    if (dirty) saveReminders();
+  }
+
+  /* ---------- command palette ---------- */
+  function fuzzyScore(q, text) {
+    if (!q) return 0;
+    const s = String(text || "").toLowerCase();
+    const query = q.toLowerCase();
+    if (!s) return -1;
+    if (s.startsWith(query)) return 1000 - s.length;
+    const idx = s.indexOf(query);
+    if (idx >= 0) return 700 - idx - s.length * 0.1;
+    let ti = 0;
+    let gaps = 0;
+    for (const ch of query) {
+      const found = s.indexOf(ch, ti);
+      if (found < 0) return -1;
+      gaps += found - ti;
+      ti = found + 1;
+    }
+    return 300 - gaps * 2 - s.length * 0.1;
+  }
+  function highlight(text, q) {
+    const s = String(text || "");
+    const idx = q ? s.toLowerCase().indexOf(q.toLowerCase()) : -1;
+    if (idx < 0) return escapeAttr(s);
+    return (
+      escapeAttr(s.slice(0, idx)) +
+      "<mark>" +
+      escapeAttr(s.slice(idx, idx + q.length)) +
+      "</mark>" +
+      escapeAttr(s.slice(idx + q.length))
+    );
+  }
+  function cycleTheme() {
+    const order = ["dark", "oled", "ice", "ember"];
+    const i = order.indexOf(state.theme);
+    setTheme(order[(i + 1) % order.length]);
+  }
+  function switchTab(name) {
+    const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+    if (tab) tab.click();
+  }
+  function paletteActions() {
+    const web =
+      (state.selected &&
+        ((state.selected.vidURLs || state.selected.vid_urls || []).find((v) =>
+          /youtube|webcast|official/i.test(`${v.url} ${v.type?.name || ""}`)
+        ) ||
+          (state.selected.vidURLs || state.selected.vid_urls || [])[0])) ||
+      null;
+    return [
+      {
+        icon: "🔎",
+        title: t("actSearch"),
+        sub: "/",
+        run: () => {
+          closePalette();
+          const s = $("search");
+          if (s) s.focus();
+        },
+      },
+      {
+        icon: "🛰",
+        title: t("actFlyIss"),
+        sub: "I",
+        run: () => {
+          closePalette();
+          flyISS();
+        },
+      },
+      {
+        icon: "📍",
+        title: t("actFlyPad"),
+        sub: "P",
+        run: () => {
+          closePalette();
+          flyToPad(padOf(state.selected));
+        },
+      },
+      {
+        icon: "🔄",
+        title: t("actSpin"),
+        sub: "G",
+        run: () => {
+          closePalette();
+          toggleSpin();
+        },
+      },
+      {
+        icon: "⏰",
+        title: t("actRemind"),
+        sub: "R",
+        run: () => {
+          closePalette();
+          toggleRemind();
+        },
+      },
+      {
+        icon: "🔗",
+        title: t("actShare"),
+        sub: "S",
+        run: () => {
+          closePalette();
+          shareMission();
+        },
+      },
+      {
+        icon: "📺",
+        title: t("actWebcast"),
+        sub: "W",
+        disabled: !web || !web.url,
+        run: () => {
+          closePalette();
+          if (web && web.url) window.open(web.url, "_blank", "noopener");
+        },
+      },
+      {
+        icon: "🌐",
+        title: t("actLang"),
+        sub: state.lang === "fa" ? "EN" : "فا",
+        run: () => {
+          closePalette();
+          setLang(state.lang === "fa" ? "en" : "fa");
+        },
+      },
+      {
+        icon: "🎨",
+        title: t("actTheme"),
+        sub: dict()[state.theme] || state.theme,
+        run: () => {
+          closePalette();
+          cycleTheme();
+        },
+      },
+      {
+        icon: "📋",
+        title: t("actTabUpcoming"),
+        run: () => {
+          closePalette();
+          switchTab("upcoming");
+        },
+      },
+      {
+        icon: "📋",
+        title: t("actTabPrevious"),
+        run: () => {
+          closePalette();
+          switchTab("previous");
+        },
+      },
+      {
+        icon: "📅",
+        title: t("actTabEvents"),
+        run: () => {
+          closePalette();
+          switchTab("events");
+        },
+      },
+      {
+        icon: "🌍",
+        title: t("actTabOrbit"),
+        run: () => {
+          closePalette();
+          switchTab("orbit");
+        },
+      },
+      {
+        icon: "⌨",
+        title: t("actHotkeys"),
+        sub: "?",
+        run: () => {
+          closePalette();
+          openHotkeys();
+        },
+      },
+      {
+        icon: "⚙",
+        title: t("actSettings"),
+        run: () => {
+          closePalette();
+          const el = $("settings");
+          if (el && el.hidden && $("settings-btn")) $("settings-btn").click();
+        },
+      },
+      {
+        icon: "ℹ",
+        title: t("actAbout"),
+        run: () => {
+          closePalette();
+          const btn = $("about-btn");
+          if (btn) btn.click();
+        },
+      },
+    ];
+  }
+  let paletteFlat = [];
+  let paletteIdx = 0;
+  function renderPalette(q) {
+    const box = $("palette-results");
+    if (!box) return;
+    const query = (q || "").trim();
+    const scored = [];
+    const push = (group, items) => {
+      const hit = items
+        .map((it) => ({ it, score: fuzzyScore(query, `${it.title} ${it.sub || ""}`) }))
+        .filter((x) => x.score >= 0 && !x.it.disabled)
+        .sort((a, b) => b.score - a.score);
+      if (hit.length) scored.push({ group, hits: hit.slice(0, 8) });
+    };
+    push(
+      t("groupLaunches"),
+      [...state.upcoming, ...state.previous].slice(0, 60).map((l) => ({
+        icon: "🚀",
+        title: missionName(l),
+        sub: `${vehicleName(l)} · ${relTime(l.net)}`,
+        run: () => {
+          closePalette();
+          switchTab(
+            state.upcoming.some((u) => u.id === l.id) ? "upcoming" : "previous"
+          );
+          selectLaunch(l, true);
+        },
+      }))
+    );
+    push(
+      t("groupSats"),
+      (state.sats || []).slice(0, 200).map((s) => ({
+        icon: "🛰",
+        title: s.name,
+        sub: `NORAD ${s.id}`,
+        run: () => {
+          closePalette();
+          switchTab("orbit");
+          state.trackedId = s.id;
+          renderSatList();
+          flySat(s);
+        },
+      }))
+    );
+    push(t("groupActions"), paletteActions());
+    paletteFlat = [];
+    if (!scored.length) {
+      box.innerHTML = `<div class="palette-group" style="text-align:center">${t("paletteEmpty")}</div>`;
+      return;
+    }
+    box.innerHTML = scored
+      .map((g) => {
+        const rows = g.hits
+          .map(({ it }) => {
+            const i = paletteFlat.length;
+            paletteFlat.push(it);
+            return `<button class="palette-item" type="button" data-pi="${i}" role="option">
+              <span class="pi-icon">${it.icon}</span>
+              <span class="pi-text">
+                <div class="pi-title">${highlight(it.title, query)}</div>
+                ${it.sub ? `<div class="pi-sub" dir="ltr">${escapeAttr(it.sub)}</div>` : ""}
+              </span>
+            </button>`;
+          })
+          .join("");
+        return `<div class="palette-group">${g.group}</div>${rows}`;
+      })
+      .join("");
+    paletteIdx = 0;
+    markPaletteActive();
+  }
+  function markPaletteActive() {
+    const nodes = document.querySelectorAll("#palette-results .palette-item");
+    nodes.forEach((n, i) => {
+      const on = i === paletteIdx;
+      n.classList.toggle("active", on);
+      if (on && n.scrollIntoView) n.scrollIntoView({ block: "nearest" });
+    });
+  }
+  function openPalette() {
+    const el = $("palette-overlay");
+    if (!el) return;
+    if (!el.hidden) {
+      closePalette();
+      return;
+    }
+    el.hidden = false;
+    const input = $("palette-input");
+    if (input) {
+      input.value = "";
+      renderPalette("");
+      setTimeout(() => input.focus(), 10);
+    }
+  }
+  function closePalette() {
+    const el = $("palette-overlay");
+    if (el) el.hidden = true;
+  }
+  function paletteOpen() {
+    const el = $("palette-overlay");
+    return el && !el.hidden;
+  }
+  function openHotkeys() {
+    const el = $("hotkeys-overlay");
+    if (el) el.hidden = false;
+  }
+  function closeHotkeys() {
+    const el = $("hotkeys-overlay");
+    if (el) el.hidden = true;
+  }
+  function hotkeysOpen() {
+    const el = $("hotkeys-overlay");
+    return el && !el.hidden;
+  }
+
+  /* ---------- connection banner ---------- */
+  function wireNet() {
+    const banner = $("net-banner");
+    const text = $("net-banner-text");
+    if (!banner) return;
+    let hideT = 0;
+    const show = (ok) => {
+      banner.classList.toggle("ok", ok);
+      if (text) text.textContent = t(ok ? "netOn" : "netOff");
+      banner.classList.add("show");
+      clearTimeout(hideT);
+      if (ok) hideT = setTimeout(() => banner.classList.remove("show"), 2600);
+    };
+    addEventListener("offline", () => show(false));
+    addEventListener("online", () => show(true));
+    if (navigator.onLine === false) show(false);
   }
 
   async function refreshFeeds() {
@@ -1661,20 +2267,29 @@
 
   async function boot() {
     try { state.favs = safeParse("apogee-favs", []); } catch (_) { state.favs = []; }
+    loadReminders();
     applyTheme();
     applyI18n();
     startLive();
+    wireNet();
     tickClocks();
     setInterval(tickClocks, 1000);
     setInterval(tickCountdown, 250);
+    setInterval(tickSats, 1000);
     setInterval(renderList, 15000);
     setInterval(refreshFeeds, 180000);
     setInterval(refreshCrew, 600000);
+    setInterval(checkReminders, 30000);
+    checkReminders();
     setInterval(() => {
       if (state.selected) loadWeather(padOf(state.selected));
     }, 300000);
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") refreshFeeds();
+      if (document.visibilityState === "visible") {
+        refreshFeeds();
+        checkReminders();
+        tickSats();
+      }
     });
     bindUI();
     try {

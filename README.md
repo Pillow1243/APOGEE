@@ -6,6 +6,16 @@ Live space **range control** — upcoming launches, ISS tracking, pad weather, c
 
 Live: **https://pillow1243.github.io/APOGEE/**
 
+## What's new (v2 upgrade)
+
+- **Command palette** — `Ctrl/⌘ K` jumps to any launch, satellite, or action (theme, language, fly-to, share, …) with fuzzy search.
+- **Keyboard shortcuts** — press `?` for the full sheet: `/` search, `↑↓/J K` move, `S` share, `F` save, `G` spin, `P` fly to pad, `I` fly to satellite, `R` reminder, `T` theme, `1–4` tabs, `W` webcast.
+- **Launch reminders** — arm a reminder on any launch (bell button or `R`); the browser notifies you at T−1h, T−10min, and liftoff.
+- **Orbit telemetry** — live altitude, velocity, lat/lng, orbital period, and footprint radius for the tracked satellite.
+- **Fixed: live satellites actually move now** — the catalog loader and SGP4 propagation were broken (wrong library API check and `Date` handling); positions are again computed every second in the browser.
+- **Connection banner** — clear offline/online status instead of silent failures.
+- **Refreshed design** — starfield backdrop, glass panels, accent glows, custom scrollbars, focus rings, `prefers-reduced-motion` support, and theme-aware colors.
+
 ## Run locally
 
 ```bash
